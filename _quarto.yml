@@ -4,7 +4,7 @@ project:
 manuscript:
   article: index.qmd
   notebooks:
-    - notebook: notebooks/Data management.qmd
+    - notebook: notebooks/Data-management.qmd
       title: Data management
   meca-bundle: false
   
