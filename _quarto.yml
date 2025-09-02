@@ -1,8 +1,15 @@
 project:
   type: manuscript
 
+manuscript:
+  article: index.qmd
+  notebooks:
+    - notebook: notebooks/Data management.qmd
+      title: Data management
+  meca-bundle: false
+  
 execute:
-  freeze: auto
+  freeze: true
 
 format:
   html:
@@ -11,7 +18,7 @@ format:
       hypothesis: true
   docx: default
   jats: default
-  agu-pdf: default
+
 
 
 
