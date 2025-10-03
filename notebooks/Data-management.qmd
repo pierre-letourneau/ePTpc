@@ -201,6 +201,7 @@ We examine the data structure and look for duplicates or missing values to ensur
 #| label: descriptive-stats
 #| code-fold: true
 #| code-summary: "Show the code"
+#| cache: true
 
 # Summary of column types for verification
 print(dfSummary(d3, 
@@ -223,6 +224,7 @@ We remove important missing data
 #| label: descriptive-stats-wo-NA
 #| code-fold: true
 #| code-summary: "Show the code"
+#| cache: true
 
 # Drop rows where key variables are missing
   d3 <- d3 |>drop_na(dfg_ml_min_m2, po4_sg, ca_sg, creat_sg, eptpc)
@@ -254,7 +256,66 @@ visit_table <- table(d$visite)
 print(visit_table)
 ```
 
-## Relationships between eptpc and others markers
+## Analysis of ePTpc in living donor
+
+```{r}
+#| label: ePTpc-dv
+#| code-fold: true
+#| code-summary: "Show the code"
+#| cache: true
+
+d_dv= d3 |> filter(etio_simplifiee=="DV"& visite== 1)|>
+  filter(age<60) |> # on garde que les gens jusquà 60 ans
+  filter(dfg_ml_min_m2>60) #on retire les IR
+  
+
+
+
+print(dfSummary(d_dv, 
+                varnumbers   = FALSE, 
+                valid.col    = FALSE, 
+                graph.magnif = 0.75),
+      method = "render")
+  
+summary(d_dv$eptpc)
+
+d_dv |>
+  ggplot(aes(x = eptpc)) +
+  geom_density(alpha = 0.5)
+
+
+ d_dv |>
+  ggplot(aes(x = eptpc, fill = sexe, color = sexe)) +
+  # Utilisation de geom_density à la place de geom_histogram
+  geom_density(alpha = 0.5)
+ 
+  d_dv |>
+  ggplot(aes(x = eptpc, fill = classe_ckd, color = classe_ckd)) +
+  # Utilisation de geom_density à la place de geom_histogram
+  geom_density(alpha = 0.5)
+  
+  # on va donc prendre retier les CKD 2B n=9
+  
+  d_dv= d3 |> filter(etio_simplifiee=="DV"& visite== 1)|>
+  filter(age<60) |> # on garde que les gens jusquà 60 ans
+  filter(dfg_ml_min_m2>75) #on retire les IR
+  
+   d_dv |>
+  ggplot(aes(x = eptpc, fill = classe_ckd, color = classe_ckd)) +
+  # Utilisation de geom_density à la place de geom_histogram
+  geom_density(alpha = 0.5)
+   
+   d_dv |>
+  ggplot(aes(x = eptpc)) +
+  geom_density(alpha = 0.5)
+
+  # norme de reférence 95% méthode percentile 
+   quantile(d_dv$eptpc, probs = c(0.025,0.5,0.975))
+   
+
+```
+
+## Relationships between ePTpc and others markers
 
 This section focuses on analyzing the relationships between key markers and renal function metrics. We will only consider the **first visit** for each patient for this cross-sectional analysis.
 
@@ -262,11 +323,13 @@ This section focuses on analyzing the relationships between key markers and rena
 #| label: eda-part1
 #| code-fold: true
 #| code-summary: "Show the code"
+#| cache: true
 
 # Filter for the first visit and select variables of interest for Part 1 analysis
 d_p1 <- d3 |>
   filter(visite == 1) |>
-  dplyr::select(age, eptpc, sexe, tmp_final, po4_sg, ca_sg, trp, dfg_ml_min,
+  mutate(pu_cru=po4_u/creat_u)|>
+  dplyr::select(age,pu_cru, eptpc, sexe, tmp_final, po4_sg, ca_sg, trp, dfg_ml_min,
                 dfg_ml_min_m2, etio_simplifiee, classe_ckd_simp, po4_u, ca_u, tmp_final, trp, creat_sg)
 
 # Check for missing values in other key markers
@@ -291,6 +354,7 @@ We examine the distribution of the primary marker of interest. The histogram sho
 #| label: eptpc-distribution
 #| code-fold: true
 #| code-summary: "Show the code"
+#| cache: true
 
 summary(d_p1$eptpc)
 d_p1 |>
@@ -410,6 +474,33 @@ d_p1 |>
 
 TRP is very dependent on GFR but little/not at all on age.
 
+#### PU/CrU
+
+```{r}
+#| label: marker-vs-gfr-age-4
+#| code-fold: true
+#| code-summary: "Show the code"
+
+d_p1 |>
+  ggplot(aes(x = dfg_ml_min_m2, y = pu_cru)) +
+  geom_point(alpha = 0.5, color = "#8484BF") +
+  geom_smooth(color = "black")
+
+### TRP with age
+d_p1 |>
+  ggplot(aes(x = age, y = pu_cru)) +
+  geom_point(alpha = 0.5, color = "#8484BF") +
+  geom_smooth(color = "black")
+
+### TRP with CKD class
+d_p1 |>
+  ggplot(aes(x = age, y = pu_cru, color = classe_ckd_simp)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(linewidth = 1.5, se = T) +
+  scale_color_jama()
+
+```
+
 ### Comparison of Multiple Markers
 
 To compare the multiple markers with different value ranges, we normalize them and plot on a single graph.
@@ -500,7 +591,9 @@ d_p1 |>
 
 ## Descriptive Table of the Control Population
 
-This section describes the population with normal GFR and normal phospho-calcium parameters.
+This section describes the population with normal GFR and normal phospho-calcium parameters (but not living donor).
+
+Adult and pediatric patients (without living donor)
 
 ```{r}
 #| label: control-group-summary
@@ -511,6 +604,74 @@ This section describes the population with normal GFR and normal phospho-calcium
 d3 |> 
   filter(visite==1)|>
   filter(etio_simplifiee=="control") |>
+  # Calculate BMI (IMC) from weight and height, as it is a key variable for the table
+  mutate(imc = poids_kg_a_12_mois / (taille_cm / 100)^2) |>
+  # Create the descriptive table using `tbl_summary`
+  tbl_summary(
+  include = c(age, sexe, poids_kg_a_12_mois, taille_cm, imc, dfg_ml_min_m2, 
+              creat_sg, ca_sg, po4_sg, trp, tmp_final, eptpc),
+  label = list(
+    age = "Age (years)",
+    sexe = "Sex (female, %)",
+    poids_kg_a_12_mois = "Weight (kg)",
+    taille_cm = "Height (cm)",
+    imc = "BMI",
+    dfg_ml_min_m2 = "GFR (mL/min/1.73 m^2)",
+    creat_sg = "Creatinine (µmol/L)",
+    ca_sg = "Calcemia (mmol/L)",
+    po4_sg = "Phosphoremia (mmol/L)",
+    trp = "Phosphate Reabsorption Rate (%)",
+    tmp_final = "TmP/GFR (mmol/L)",
+    eptpc = "ePTpc (mmol/L)"
+  ),
+  statistic = list(all_continuous() ~ "{median} ({p25}, {p75})"))
+```
+
+Pediatric patients
+
+```{r}
+#| label: control-group-summary-ped
+#| code-fold: true
+#| code-summary: "Show the code"
+
+# Filter the population to include only those with normal GFR and normal phospho-calcium parameters.
+d3 |> 
+  filter(visite==1)|>
+  filter(etio_simplifiee=="control"& age <18) |>
+  # Calculate BMI (IMC) from weight and height, as it is a key variable for the table
+  mutate(imc = poids_kg_a_12_mois / (taille_cm / 100)^2) |>
+  # Create the descriptive table using `tbl_summary`
+  tbl_summary(
+  include = c(age, sexe, poids_kg_a_12_mois, taille_cm, imc, dfg_ml_min_m2, 
+              creat_sg, ca_sg, po4_sg, trp, tmp_final, eptpc),
+  label = list(
+    age = "Age (years)",
+    sexe = "Sex (female, %)",
+    poids_kg_a_12_mois = "Weight (kg)",
+    taille_cm = "Height (cm)",
+    imc = "BMI",
+    dfg_ml_min_m2 = "GFR (mL/min/1.73 m^2)",
+    creat_sg = "Creatinine (µmol/L)",
+    ca_sg = "Calcemia (mmol/L)",
+    po4_sg = "Phosphoremia (mmol/L)",
+    trp = "Phosphate Reabsorption Rate (%)",
+    tmp_final = "TmP/GFR (mmol/L)",
+    eptpc = "ePTpc (mmol/L)"
+  ),
+  statistic = list(all_continuous() ~ "{median} ({p25}, {p75})"))
+```
+
+Adults
+
+```{r}
+#| label: control-group-summary-adults
+#| code-fold: true
+#| code-summary: "Show the code"
+
+# Filter the population to include only those with normal GFR and normal phospho-calcium parameters.
+d3 |> 
+  filter(visite==1)|>
+  filter(etio_simplifiee=="control"& age >18) |>
   # Calculate BMI (IMC) from weight and height, as it is a key variable for the table
   mutate(imc = poids_kg_a_12_mois / (taille_cm / 100)^2) |>
   # Create the descriptive table using `tbl_summary`
@@ -546,7 +707,8 @@ This section focuses on analyzing the relationships between key markers and rena
 # Filter for the first visit and select variables of interest for Part 1 analysis
 d_ped <- d3 |>
   filter(visite == 1 & age <18) |>
-  dplyr::select(age, eptpc, sexe, tmp_final, po4_sg, ca_sg, trp, dfg_ml_min,
+  mutate(pu_cru=po4_u/creat_u)|>
+  dplyr::select(age,pu_cru, eptpc, sexe, tmp_final, po4_sg, ca_sg, trp, dfg_ml_min,
                 dfg_ml_min_m2, etio_simplifiee, classe_ckd_simp, po4_u, ca_u, tmp_final, trp, creat_sg)
 
 
@@ -588,8 +750,6 @@ d_ped |>
 
 ```
 
-The marker appears to be constant with age. Are the high points outliers? Let's try to find an explanation. Is it related to the severity of CKD?
-
 ```{r}
 #| label: ped-marker-vs-gfr-age-1.b
 #| code-fold: true
@@ -604,10 +764,6 @@ d_ped |>
 
 
 ```
-
-It seems quite clear that CKD explains these points, and age appears to have little influence on this marker.
-
-Let's look at other concurrent markers. TMP/GFR and TRP
 
 #### Tmp/GFR
 
@@ -637,8 +793,6 @@ d_ped |>
 
 ```
 
-TMP/GFR is high in children until puberty, then it drops to stabilize in adulthood, with an effect also from renal function. As GFR decreases, TMP/GFR also decreases with no clear interaction.
-
 #### TRP
 
 ```{r}
@@ -666,7 +820,32 @@ d_ped |>
 
 ```
 
-TRP is very dependent on GFR but little/not at all on age.
+#### PU/CrU
+
+```{r}
+#| label: ped-marker-vs-gfr-age-4
+#| code-fold: true
+#| code-summary: "Show the code"
+
+d_ped |>
+  ggplot(aes(x = dfg_ml_min_m2, y = pu_cru)) +
+  geom_point(alpha = 0.5, color = "#8484BF") +
+  geom_smooth(color = "black")
+
+### TRP with age
+d_ped |>
+  ggplot(aes(x = age, y = pu_cru)) +
+  geom_point(alpha = 0.5, color = "#8484BF") +
+  geom_smooth(color = "black")
+
+### TRP with CKD class
+d_ped |>
+  ggplot(aes(x = age, y = pu_cru, color = classe_ckd_simp)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(linewidth = 1.5, se = T) +
+  scale_color_jama()
+
+```
 
 ### Comparison of Multiple Markers
 
@@ -710,5 +889,88 @@ ggplot(d_ped_long, aes(x = dfg_ml_min_m2, y = z_score, color = marqueur, group =
     color = "Marker"
   ) +
   scale_color_jama()
+
+```
+
+## Longitudinal evaluation of ePTpc and GFR slope association
+
+GFR decline is the critical outcome in Chronic Kidney Disease (CKD) progression. This analysis investigates the association between a patient's **baseline ePTpc** and the subsequent **long-term GFR decline rate (slope)**.
+
+We utilize a **Linear Mixed-Effects Model (LMM)** to appropriately handle the correlated nature of longitudinal GFR measurements. The model's primary focus is the **interaction term** between the follow-up time and baseline ePTpc, adjusting for key confounders like baseline GFR and CKD etiology.
+
+Using the **counterfactual prediction** approach, we graphically illustrate the predicted average GFR trajectories over time for different initial ePTpc levels. This figure will clarify the **marginal effect** of baseline ePTpc on the speed of GFR deterioration which is non clinically and statistically significant in our model.
+
+```{r}
+#| label: longitudinal-evaluation
+#| code-fold: true
+#| code-summary: "Show the code"
+#| cache: true
+
+
+library(lattice)
+library(nlme)
+library(performance)
+library(splines)
+library(marginaleffects)
+
+# data frame for longitudinal analysis 
+# kepping patients with >=3 visits 
+d_slope=d3 |> group_by(id)|> filter(n()>2) |>
+  group_by(id)|>
+  mutate(delai=(age-min(age))*365.25, # delay since the first evaluation
+         eptpc_base=first(eptpc),
+         alb_creat_base=first(alb_creat_classe, na_rm = T),
+         baseGFR= first(dfg_ml_min_m2))|>
+  ungroup()
+
+
+hist(d_slope$dfg_ml_min_m2)
+
+# Modeling the association of baseline eptpc on GFR slope
+
+mod0=lme(dfg_ml_min_m2~delai,
+    random=~1|id,
+    data=d_slope)
+
+mod1=lme(dfg_ml_min_m2~delai*(eptpc_base),
+    random=~1|id,
+    data=d_slope)
+
+
+mod2=lme(dfg_ml_min_m2~delai*(eptpc_base+baseGFR),
+    random=~1|id,
+    data=d_slope)
+
+
+mod3=lme(dfg_ml_min_m2~delai*(eptpc_base+baseGFR+etio_simplifiee),
+    random=~1|id,
+    data=d_slope)
+
+
+anova(mod0,mod1,mod2,mod3)
+car::Anova(mod3)
+
+
+mod_final=mod3
+
+# Predictions
+preds_custom <- avg_predictions(
+  model = mod_final,
+  newdata = datagrid(
+    eptpc_base = c(0.2,0.4,0.6,0.75,1),
+    delai=seq(0,2500, length.out= 10),
+    grid_type="counterfactual"  
+  ),
+  by=c("delai","eptpc_base"),
+  type = "response",
+  vcov = T
+)
+
+# Visualisation
+ggplot(preds_custom, aes(x = delai, y = estimate, group=factor(eptpc_base), color=factor(eptpc_base))) +
+  geom_line() +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.2) 
+
+
 
 ```
